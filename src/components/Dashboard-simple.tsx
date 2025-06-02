@@ -6,7 +6,7 @@ import { Calendar, Clock, CheckSquare, CreditCard, TrendingUp, AlertCircle } fro
 import { getStats, timesheetStorage, todoStorage, subscriptionStorage } from '@/lib/storage';
 import { DashboardStats } from '@/types';
 import DateRangePicker, { DateRange } from './DateRangePicker';
-import { getDateString, formatDuration } from '@/lib/dateUtils';
+import { getDateString, formatDuration, generatePeriodChartData } from '@/lib/dateUtils';
 
 export default function DashboardSimple() {
   const [stats, setStats] = useState<DashboardStats>({
@@ -17,7 +17,7 @@ export default function DashboardSimple() {
     monthlySubscriptionCost: 0,
   });
 
-  const [weeklyData, setWeeklyData] = useState<any[]>([]);
+  const [chartData, setChartData] = useState<any[]>([]);
   const [upcomingDeadlines, setUpcomingDeadlines] = useState<any[]>([]);
   const [mounted, setMounted] = useState(false);
   
@@ -36,50 +36,29 @@ export default function DashboardSimple() {
     const currentStats = getStats();
     setStats(currentStats);
 
-    // 週間工数データを作成
-    const weekData = generateWeeklyData();
-    setWeeklyData(weekData);
-
     // 期限が近いタスクを取得
     const deadlines = getUpcomingDeadlines();
     setUpcomingDeadlines(deadlines);
   }, []);
 
-  // 期間変更時に統計データを更新
+  // 期間変更時に統計データとグラフデータを更新
   useEffect(() => {
     if (mounted) {
       const currentStats = getStats(selectedDateRange.startDate, selectedDateRange.endDate);
       setStats(currentStats);
+      
+      // 期間に応じた工数グラフデータを生成
+      const timesheets = timesheetStorage.getAll();
+      const periodChartData = generatePeriodChartData(
+        timesheets,
+        selectedDateRange.startDate,
+        selectedDateRange.endDate
+      );
+      setChartData(periodChartData);
     }
   }, [selectedDateRange, mounted]);
 
-  const generateWeeklyData = () => {
-    const timesheets = timesheetStorage.getAll();
-    const today = new Date();
-    const weekData = [];
 
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - i);
-      const dateStr = date.toISOString().split('T')[0];
-      
-      const dayTimesheets = timesheets.filter(t => 
-        t.start_time.startsWith(dateStr)
-      );
-      
-      const totalMinutes = dayTimesheets.reduce((total, t) => 
-        total + (t.elapsed_minutes || 0), 0
-      );
-
-      weekData.push({
-        day: date.toLocaleDateString('ja-JP', { weekday: 'short' }),
-        hours: Math.round(totalMinutes / 60 * 10) / 10,
-        date: dateStr
-      });
-    }
-
-    return weekData;
-  };
 
   const getUpcomingDeadlines = () => {
     const todos = todoStorage.getAll();
@@ -201,11 +180,13 @@ export default function DashboardSimple() {
 
       {/* グラフセクション */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* 週間工数グラフ */}
+        {/* 期間工数グラフ */}
         <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">週間工数時間</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            {selectedDateRange.label}の工数時間
+          </h3>
           <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={weeklyData}>
+            <BarChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="day" />
               <YAxis />

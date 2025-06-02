@@ -27,7 +27,9 @@ export default function DateRangePicker({ value, onChange }: DateRangePickerProp
     
     // 今週の開始日（月曜日）
     const startOfWeek = new Date(today);
-    startOfWeek.setDate(today.getDate() - today.getDay() + 1);
+    const dayOfWeek = today.getDay(); // 0=日曜日, 1=月曜日, ..., 6=土曜日
+    const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // 日曜日の場合は前週の月曜日
+    startOfWeek.setDate(today.getDate() + daysToMonday);
     const startOfWeekStr = getDateString(startOfWeek);
     
     // 今月の開始日

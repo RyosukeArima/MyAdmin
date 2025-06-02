@@ -106,4 +106,81 @@ export const filterByDateRange = <T extends { start_time: string }>(
     const itemDate = item.start_time;
     return itemDate >= start && itemDate <= end;
   });
+};
+
+/**
+ * 期間に応じた工数グラフデータを生成
+ */
+export const generatePeriodChartData = (
+  data: any[],
+  startDate: string,
+  endDate: string
+): { day: string; hours: number; date: string }[] => {
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const diffDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  
+  // 期間が7日以下の場合は日別表示
+  if (diffDays <= 7) {
+    const chartData = [];
+    
+    for (let i = 0; i < diffDays; i++) {
+      const date = new Date(start);
+      date.setDate(start.getDate() + i);
+      const dateStr = getDateString(date);
+      
+      const dayData = data.filter(t => 
+        t.start_time.startsWith(dateStr)
+      );
+      
+      const totalMinutes = dayData.reduce((total, t) => 
+        total + (t.elapsed_minutes || 0), 0
+      );
+      
+      chartData.push({
+        day: date.toLocaleDateString('ja-JP', { 
+          month: 'numeric', 
+          day: 'numeric',
+          weekday: 'short' 
+        }),
+        hours: Math.round(totalMinutes / 60 * 10) / 10,
+        date: dateStr
+      });
+    }
+    
+    return chartData;
+  }
+  
+  // 期間が長い場合は週別表示
+  const chartData = [];
+  const weekStart = new Date(start);
+  const dayOfWeek = weekStart.getDay();
+  const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  weekStart.setDate(weekStart.getDate() + daysToMonday);
+  
+  while (weekStart <= end) {
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+    
+    const weekEndCapped = weekEnd > end ? end : weekEnd;
+    
+    const weekData = data.filter(t => {
+      const itemDate = t.start_time.split('T')[0];
+      return itemDate >= getDateString(weekStart) && itemDate <= getDateString(weekEndCapped);
+    });
+    
+    const totalMinutes = weekData.reduce((total, t) => 
+      total + (t.elapsed_minutes || 0), 0
+    );
+    
+    chartData.push({
+      day: `${weekStart.getMonth() + 1}/${weekStart.getDate()}~`,
+      hours: Math.round(totalMinutes / 60 * 10) / 10,
+      date: getDateString(weekStart)
+    });
+    
+    weekStart.setDate(weekStart.getDate() + 7);
+  }
+  
+  return chartData;
 }; 
