@@ -5,6 +5,8 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { Calendar, Clock, CheckSquare, CreditCard, TrendingUp, AlertCircle } from 'lucide-react';
 import { getStats, timesheetStorage, todoStorage, subscriptionStorage } from '@/lib/storage';
 import { DashboardStats } from '@/types';
+import DateRangePicker, { DateRange } from './DateRangePicker';
+import { getDateString, formatDuration, generatePeriodChartData } from '@/lib/dateUtils';
 
 export default function DashboardSimple() {
   const [stats, setStats] = useState<DashboardStats>({
@@ -15,9 +17,16 @@ export default function DashboardSimple() {
     monthlySubscriptionCost: 0,
   });
 
-  const [weeklyData, setWeeklyData] = useState<any[]>([]);
+  const [chartData, setChartData] = useState<any[]>([]);
   const [upcomingDeadlines, setUpcomingDeadlines] = useState<any[]>([]);
   const [mounted, setMounted] = useState(false);
+  
+  // 期間選択の状態
+  const [selectedDateRange, setSelectedDateRange] = useState<DateRange>({
+    startDate: getDateString(),
+    endDate: getDateString(),
+    label: '今日'
+  });
 
   useEffect(() => {
     // コンポーネントがマウントされたことを記録
@@ -27,42 +36,29 @@ export default function DashboardSimple() {
     const currentStats = getStats();
     setStats(currentStats);
 
-    // 週間工数データを作成
-    const weekData = generateWeeklyData();
-    setWeeklyData(weekData);
-
     // 期限が近いタスクを取得
     const deadlines = getUpcomingDeadlines();
     setUpcomingDeadlines(deadlines);
   }, []);
 
-  const generateWeeklyData = () => {
-    const timesheets = timesheetStorage.getAll();
-    const today = new Date();
-    const weekData = [];
-
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - i);
-      const dateStr = date.toISOString().split('T')[0];
+  // 期間変更時に統計データとグラフデータを更新
+  useEffect(() => {
+    if (mounted) {
+      const currentStats = getStats(selectedDateRange.startDate, selectedDateRange.endDate);
+      setStats(currentStats);
       
-      const dayTimesheets = timesheets.filter(t => 
-        t.start_time.startsWith(dateStr)
+      // 期間に応じた工数グラフデータを生成
+      const timesheets = timesheetStorage.getAll();
+      const periodChartData = generatePeriodChartData(
+        timesheets,
+        selectedDateRange.startDate,
+        selectedDateRange.endDate
       );
-      
-      const totalMinutes = dayTimesheets.reduce((total, t) => 
-        total + (t.elapsed_minutes || 0), 0
-      );
-
-      weekData.push({
-        day: date.toLocaleDateString('ja-JP', { weekday: 'short' }),
-        hours: Math.round(totalMinutes / 60 * 10) / 10,
-        date: dateStr
-      });
+      setChartData(periodChartData);
     }
+  }, [selectedDateRange, mounted]);
 
-    return weekData;
-  };
+
 
   const getUpcomingDeadlines = () => {
     const todos = todoStorage.getAll();
@@ -117,8 +113,14 @@ export default function DashboardSimple() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-gray-900">ダッシュボード</h1>
-        <div className="text-sm text-gray-500">
-          最終更新: {new Date().toLocaleString('ja-JP')}
+        <div className="flex items-center space-x-4">
+          <DateRangePicker 
+            value={selectedDateRange} 
+            onChange={setSelectedDateRange} 
+          />
+          <div className="text-sm text-gray-500">
+            最終更新: {new Date().toLocaleString('ja-JP')}
+          </div>
         </div>
       </div>
 
@@ -127,10 +129,13 @@ export default function DashboardSimple() {
         <div className="card">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">今日の工数時間</p>
-              <p className="text-2xl font-bold text-blue-600">
-                {formatTime(stats.totalTimeToday)}
+              <p className="text-sm font-medium text-gray-600">
+                {selectedDateRange.startDate === selectedDateRange.endDate ? '工数時間' : '期間工数時間'}
               </p>
+              <p className="text-2xl font-bold text-blue-600">
+                {formatDuration(selectedDateRange.startDate === selectedDateRange.endDate ? stats.totalTimeToday : (stats as any).totalTimeInPeriod || 0)}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">{selectedDateRange.label}</p>
             </div>
             <Clock className="h-8 w-8 text-blue-600" />
           </div>
@@ -175,11 +180,13 @@ export default function DashboardSimple() {
 
       {/* グラフセクション */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* 週間工数グラフ */}
+        {/* 期間工数グラフ */}
         <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">週間工数時間</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            {selectedDateRange.label}の工数時間
+          </h3>
           <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={weeklyData}>
+            <BarChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="day" />
               <YAxis />

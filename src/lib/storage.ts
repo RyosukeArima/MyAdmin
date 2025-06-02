@@ -80,19 +80,22 @@ export const todoStorage = new LocalStorage<Todo>(STORAGE_KEYS.TODOS);
 export const subscriptionStorage = new LocalStorage<Subscription>(STORAGE_KEYS.SUBSCRIPTIONS);
 
 // 統計データ取得用のヘルパー関数
-export const getStats = () => {
+export const getStats = (startDate?: string, endDate?: string) => {
   const timesheets = timesheetStorage.getAll();
   const todos = todoStorage.getAll();
   const subscriptions = subscriptionStorage.getAll();
 
-  // 今日の日付
-  const today = new Date().toISOString().split('T')[0];
+  // 期間が指定されていない場合は今日のデータを使用
+  const targetStartDate = startDate || new Date().toISOString().split('T')[0];
+  const targetEndDate = endDate || targetStartDate;
   
-  // 今日の工数時間を計算
-  const todayTimesheets = timesheets.filter(t => 
-    t.start_time.startsWith(today)
-  );
-  const totalTimeToday = todayTimesheets.reduce((total, t) => 
+  // 指定期間の工数時間を計算
+  const filteredTimesheets = timesheets.filter(t => {
+    const timesheetDate = t.start_time.split('T')[0];
+    return timesheetDate >= targetStartDate && timesheetDate <= targetEndDate;
+  });
+  
+  const totalTimeInPeriod = filteredTimesheets.reduce((total, t) => 
     total + (t.elapsed_minutes || 0), 0
   );
 
@@ -107,8 +110,14 @@ export const getStats = () => {
   return {
     totalTodos: todos.length,
     completedTodos,
-    totalTimeToday,
+    totalTimeToday: targetStartDate === targetEndDate ? totalTimeInPeriod : 0, // 単日の場合のみ
+    totalTimeInPeriod, // 期間の合計時間
     totalSubscriptions: subscriptions.length,
     monthlySubscriptionCost,
+    periodLabel: startDate && endDate && startDate !== endDate 
+      ? `${startDate} ～ ${endDate}` 
+      : targetStartDate === new Date().toISOString().split('T')[0] 
+      ? '今日' 
+      : targetStartDate,
   };
 }; 
