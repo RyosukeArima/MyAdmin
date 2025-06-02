@@ -10,7 +10,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# lib/ を削除 - TypeScriptプロジェクトのsrc/lib/と競合するため
 lib64/
 parts/
 sdist/
@@ -29,6 +29,10 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+# Python仮想環境のlibフォルダー
+venv/lib/
+env/lib/
+.venv/lib/
 
 # User data
 data/
