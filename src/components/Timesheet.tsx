@@ -4,13 +4,23 @@ import { useState, useEffect } from 'react';
 import { Play, Pause, Square, Plus, Clock, Calendar, Edit2, Trash2 } from 'lucide-react';
 import { timesheetStorage } from '@/lib/storage';
 import { Timesheet as TimesheetType } from '@/types';
+import { useTimer } from '@/contexts/TimerContext';
+import { 
+  isoToDatetimeLocal, 
+  datetimeLocalToISO, 
+  formatToJapanese, 
+  formatDuration, 
+  calculateElapsedMinutes,
+  getDateString 
+} from '@/lib/dateUtils';
 
 export default function Timesheet() {
   const [timesheets, setTimesheets] = useState<TimesheetType[]>([]);
-  const [activeTimer, setActiveTimer] = useState<TimesheetType | null>(null);
-  const [currentTime, setCurrentTime] = useState(new Date());
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingItem, setEditingItem] = useState<TimesheetType | null>(null);
+  
+  // TimerContextから状態と関数を取得
+  const { activeTimer, startTimer, stopTimer, pauseTimer, getElapsedTime } = useTimer();
   
   const [formData, setFormData] = useState({
     title: '',
@@ -23,8 +33,6 @@ export default function Timesheet() {
 
   useEffect(() => {
     loadTimesheets();
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(timer);
   }, []);
 
   const loadTimesheets = () => {
@@ -32,42 +40,24 @@ export default function Timesheet() {
     setTimesheets(data.sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime()));
   };
 
-  const startTimer = (title: string, category: string) => {
-    const newTimesheet: TimesheetType = {
-      title,
-      category,
-      start_time: new Date().toISOString(),
-    };
-    
-    const saved = timesheetStorage.save(newTimesheet);
-    setActiveTimer(saved);
+  const handleTimerStart = (title: string, category: string) => {
+    startTimer(title, category);
     setShowAddForm(false);
     setFormData({ title: '', category: '', start_time: '', end_time: '' });
-    loadTimesheets();
+    // タイマー開始後にリストを更新
+    setTimeout(() => loadTimesheets(), 100);
   };
 
-  const stopTimer = () => {
-    if (activeTimer && activeTimer.id) {
-      const endTime = new Date().toISOString();
-      const startTime = new Date(activeTimer.start_time);
-      const elapsed = Math.round((new Date().getTime() - startTime.getTime()) / 60000);
-      
-      const updated: TimesheetType = {
-        ...activeTimer,
-        end_time: endTime,
-        elapsed_minutes: elapsed
-      };
-      
-      timesheetStorage.save(updated);
-      setActiveTimer(null);
-      loadTimesheets();
-    }
+  const handleTimerStop = () => {
+    stopTimer();
+    // タイマー停止後にリストを更新
+    setTimeout(() => loadTimesheets(), 100);
   };
 
-  const pauseTimer = () => {
-    if (activeTimer) {
-      stopTimer();
-    }
+  const handleTimerPause = () => {
+    pauseTimer();
+    // タイマー停止後にリストを更新
+    setTimeout(() => loadTimesheets(), 100);
   };
 
   const deleteTimesheet = (id: number) => {
@@ -82,16 +72,16 @@ export default function Timesheet() {
     
     if (formData.title && formData.category) {
       if (formData.start_time && formData.end_time) {
-        // 手動入力の場合
-        const startTime = new Date(formData.start_time);
-        const endTime = new Date(formData.end_time);
-        const elapsed = Math.round((endTime.getTime() - startTime.getTime()) / 60000);
+        // 手動入力の場合 - dateUtilsを使用して正しく時間変換
+        const startTimeISO = datetimeLocalToISO(formData.start_time);
+        const endTimeISO = datetimeLocalToISO(formData.end_time);
+        const elapsed = calculateElapsedMinutes(startTimeISO, endTimeISO);
         
         const timesheet: TimesheetType = {
           title: formData.title,
           category: formData.category,
-          start_time: formData.start_time,
-          end_time: formData.end_time,
+          start_time: startTimeISO,
+          end_time: endTimeISO,
           elapsed_minutes: elapsed
         };
         
@@ -106,7 +96,7 @@ export default function Timesheet() {
         loadTimesheets();
       } else {
         // タイマー開始
-        startTimer(formData.title, formData.category);
+        handleTimerStart(formData.title, formData.category);
       }
     }
   };
@@ -116,36 +106,14 @@ export default function Timesheet() {
     setFormData({
       title: timesheet.title,
       category: timesheet.category,
-      start_time: timesheet.start_time ? timesheet.start_time.slice(0, -1) : '',
-      end_time: timesheet.end_time ? timesheet.end_time.slice(0, -1) : ''
+      start_time: isoToDatetimeLocal(timesheet.start_time),
+      end_time: timesheet.end_time ? isoToDatetimeLocal(timesheet.end_time) : ''
     });
     setShowAddForm(true);
   };
 
-  const formatDuration = (minutes: number) => {
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return `${hours}時間${mins}分`;
-  };
-
-  const formatTime = (isoString: string) => {
-    return new Date(isoString).toLocaleString('ja-JP');
-  };
-
-  const getElapsedTime = () => {
-    if (!activeTimer) return '00:00:00';
-    
-    const start = new Date(activeTimer.start_time);
-    const elapsed = Math.floor((currentTime.getTime() - start.getTime()) / 1000);
-    const hours = Math.floor(elapsed / 3600);
-    const minutes = Math.floor((elapsed % 3600) / 60);
-    const seconds = elapsed % 60;
-    
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-  };
-
   const todayTotal = timesheets
-    .filter(t => t.start_time.startsWith(new Date().toISOString().split('T')[0]))
+    .filter(t => t.start_time.startsWith(getDateString()))
     .reduce((total, t) => total + (t.elapsed_minutes || 0), 0);
 
   return (
@@ -169,7 +137,7 @@ export default function Timesheet() {
               <h3 className="text-lg font-semibold text-blue-900">{activeTimer.title}</h3>
               <p className="text-blue-700">{activeTimer.category}</p>
               <p className="text-sm text-blue-600">
-                開始: {formatTime(activeTimer.start_time)}
+                開始: {formatToJapanese(activeTimer.start_time)}
               </p>
             </div>
             <div className="text-right">
@@ -178,14 +146,14 @@ export default function Timesheet() {
               </div>
               <div className="flex space-x-2">
                 <button
-                  onClick={pauseTimer}
+                  onClick={handleTimerPause}
                   className="flex items-center space-x-1 px-3 py-1 bg-orange-500 text-white rounded hover:bg-orange-600"
                 >
                   <Pause className="w-4 h-4" />
                   <span>一時停止</span>
                 </button>
                 <button
-                  onClick={stopTimer}
+                  onClick={handleTimerStop}
                   className="flex items-center space-x-1 px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600"
                 >
                   <Square className="w-4 h-4" />
@@ -313,12 +281,13 @@ export default function Timesheet() {
                       </span>
                     </div>
                     <div className="mt-1 text-sm text-gray-600">
-                      <p>開始: {formatTime(timesheet.start_time)}</p>
+                      <p>開始: {formatToJapanese(timesheet.start_time)}</p>
                       {timesheet.end_time && (
-                        <p>終了: {formatTime(timesheet.end_time)}</p>
+                        <p>終了: {formatToJapanese(timesheet.end_time)}</p>
                       )}
                     </div>
                   </div>
+                  
                   <div className="flex items-center space-x-3">
                     {timesheet.elapsed_minutes ? (
                       <div className="text-right">

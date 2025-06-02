@@ -5,6 +5,8 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { Calendar, Clock, CheckSquare, CreditCard, TrendingUp, AlertCircle } from 'lucide-react';
 import { getStats, timesheetStorage, todoStorage, subscriptionStorage } from '@/lib/storage';
 import { DashboardStats } from '@/types';
+import DateRangePicker, { DateRange } from './DateRangePicker';
+import { getDateString, formatDuration } from '@/lib/dateUtils';
 
 export default function DashboardSimple() {
   const [stats, setStats] = useState<DashboardStats>({
@@ -18,6 +20,13 @@ export default function DashboardSimple() {
   const [weeklyData, setWeeklyData] = useState<any[]>([]);
   const [upcomingDeadlines, setUpcomingDeadlines] = useState<any[]>([]);
   const [mounted, setMounted] = useState(false);
+  
+  // 期間選択の状態
+  const [selectedDateRange, setSelectedDateRange] = useState<DateRange>({
+    startDate: getDateString(),
+    endDate: getDateString(),
+    label: '今日'
+  });
 
   useEffect(() => {
     // コンポーネントがマウントされたことを記録
@@ -35,6 +44,14 @@ export default function DashboardSimple() {
     const deadlines = getUpcomingDeadlines();
     setUpcomingDeadlines(deadlines);
   }, []);
+
+  // 期間変更時に統計データを更新
+  useEffect(() => {
+    if (mounted) {
+      const currentStats = getStats(selectedDateRange.startDate, selectedDateRange.endDate);
+      setStats(currentStats);
+    }
+  }, [selectedDateRange, mounted]);
 
   const generateWeeklyData = () => {
     const timesheets = timesheetStorage.getAll();
@@ -117,8 +134,14 @@ export default function DashboardSimple() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-gray-900">ダッシュボード</h1>
-        <div className="text-sm text-gray-500">
-          最終更新: {new Date().toLocaleString('ja-JP')}
+        <div className="flex items-center space-x-4">
+          <DateRangePicker 
+            value={selectedDateRange} 
+            onChange={setSelectedDateRange} 
+          />
+          <div className="text-sm text-gray-500">
+            最終更新: {new Date().toLocaleString('ja-JP')}
+          </div>
         </div>
       </div>
 
@@ -127,10 +150,13 @@ export default function DashboardSimple() {
         <div className="card">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">今日の工数時間</p>
-              <p className="text-2xl font-bold text-blue-600">
-                {formatTime(stats.totalTimeToday)}
+              <p className="text-sm font-medium text-gray-600">
+                {selectedDateRange.startDate === selectedDateRange.endDate ? '工数時間' : '期間工数時間'}
               </p>
+              <p className="text-2xl font-bold text-blue-600">
+                {formatDuration(selectedDateRange.startDate === selectedDateRange.endDate ? stats.totalTimeToday : (stats as any).totalTimeInPeriod || 0)}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">{selectedDateRange.label}</p>
             </div>
             <Clock className="h-8 w-8 text-blue-600" />
           </div>
